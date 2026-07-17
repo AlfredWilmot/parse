@@ -4,8 +4,9 @@ Copyright © 2026 AlfredWilmot
 package cmd
 
 import (
-	"github.com/spf13/cobra"
+	"fmt"
 	"os"
+	"github.com/spf13/cobra"
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -20,7 +21,57 @@ This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
-	// Run: func(cmd *cobra.Command, args []string) { },
+	Run: func(cmd *cobra.Command, args []string) {
+		err := parseArgs(cmd, args)
+		if err != nil {
+			fmt.Println(err)
+		}
+	},
+	Args: cobra.ExactArgs(2),
+}
+
+type DataFormat int32
+
+const (
+	Bencoding DataFormat = iota
+	JSONFormat
+)
+
+var dataFormatMap = map[DataFormat]string{
+	Bencoding:  "bencoding",
+	JSONFormat: "json",
+}
+
+func (ss DataFormat) String() string {
+	return dataFormatMap[ss]
+}
+
+// return the equivalent DataFormat corresponding to the input string, if one exists.
+func getDataFormat(arg *string) (DataFormat, error) {
+	switch *arg {
+	case Bencoding.String():
+		return Bencoding, nil
+	case JSONFormat.String():
+		return JSONFormat, nil
+	default:
+		return 0, fmt.Errorf("unrecognised DataFormat '%v'", *arg)
+	}
+}
+
+func parseArgs(cmd *cobra.Command, args []string) error {
+
+	inputDataformat, err := getDataFormat(&args[0])
+	if err != nil {
+		return err
+	}
+	outputDataformat, err := getDataFormat(&args[1])
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Transforming from %v to %v\n", inputDataformat, outputDataformat)
+
+	return nil
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
