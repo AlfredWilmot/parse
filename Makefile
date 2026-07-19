@@ -7,6 +7,7 @@ build:
 	CGO_ENABLED=0 go build -a -ldflags '-extldflags "-static"' .
 
 fmt:
+	go mod tidy
 	find -iname "*.go" | xargs gofmt -w -s
 
 .PHONY: build fmt
