@@ -2,8 +2,7 @@
 package internal
 
 import (
-	"errors"
-	"io"
+	"bytes"
 	"os"
 )
 
@@ -15,17 +14,13 @@ func JSONToBencoding(buffer *os.File) {
 	// TODO
 }
 
-func FillBufferFromStdin(buffer *[]byte) {
+func FillBufferFromStdin(buffer *bytes.Buffer) {
 	// fill buffer with contents of stdin
 	for {
-		n, err := os.Stdin.Read(*buffer)
+		n, err := buffer.ReadFrom(os.Stdin)
 		if err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			} else {
-				os.Stderr.WriteString(err.Error())
-				os.Exit(1)
-			}
+			os.Stderr.WriteString(err.Error())
+			os.Exit(1)
 		}
 		if n <= 0 {
 			break

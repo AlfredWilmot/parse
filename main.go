@@ -38,7 +38,7 @@ func runCmd(cmd *cobra.Command, args []string) {
 	inputDataFormat := args[0]
 	outputDataFormat := args[1]
 
-	buffer := make([]byte, 1024)
+	buffer := bytes.Buffer{}
 
 	switch {
 	case inputDataFormat == BENCODING && outputDataFormat == JSON:
@@ -56,9 +56,7 @@ func runCmd(cmd *cobra.Command, args []string) {
 	case inputDataFormat == outputDataFormat:
 		// write contents of filled buffer to stdout
 		internal.FillBufferFromStdin(&buffer)
-		buffer := bytes.TrimRight(buffer, "\x00")
-		result := strings.TrimRight(string(buffer), "\n")
-		fmt.Println(result)
+		os.Stdout.WriteString(strings.TrimRight(buffer.String(), "\n") + "\n")
 	}
 	fmt.Printf("Converting from '%v' to '%v'\n", args[0], args[1])
 }
