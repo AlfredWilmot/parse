@@ -30,6 +30,7 @@ type bencodingBytes struct {
 func (b bencodingBytes) String() string {
 	return fmt.Sprintf("%d:%s", b.len, string(b.buf))
 }
+
 func (b bencodingBytes) Type() bencodingType {
 	return bencodingBytesType
 }
@@ -39,6 +40,7 @@ type bencodingInteger int64
 func (b bencodingInteger) String() string {
 	return fmt.Sprintf("i%de", b)
 }
+
 func (b bencodingInteger) Type() bencodingType {
 	return bencodingIntegerType
 }
@@ -46,7 +48,6 @@ func (b bencodingInteger) Type() bencodingType {
 type bencodingList []bencoding
 
 func (b bencodingList) String() string {
-
 	// initialise this list string
 	buff := strings.Builder{}
 	buff.WriteString("l")
@@ -65,6 +66,7 @@ func (b bencodingList) String() string {
 	buff.WriteString("e")
 	return buff.String()
 }
+
 func (b bencodingList) Type() bencodingType {
 	return bencodingListType
 }
