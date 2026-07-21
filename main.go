@@ -4,10 +4,8 @@ Package parse Copyright © 2026 AlfredWilmot
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"os"
-	"strings"
 
 	"parse/internal"
 
@@ -16,7 +14,7 @@ import (
 
 // used for flags (see init() for details)
 var (
-	raw bool
+	stream bool
 )
 
 const (
@@ -38,31 +36,42 @@ func runCmd(cmd *cobra.Command, args []string) {
 	inputDataFormat := args[0]
 	outputDataFormat := args[1]
 
-	buffer := bytes.Buffer{}
+	// TODO: handle errors when reading from input
+	inputBuffer := make([]byte, 1<<30) // 1GB
+	n, _ := os.Stdin.Read(inputBuffer)
+	inputBuffer = inputBuffer[:n]
+
+	// parse data into designated input type
+	var result internal.Bencoder
+	switch inputDataFormat {
+	case BENCODING:
+		var err error
+		result, err = internal.ParseIntoBencoding(inputBuffer)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+	case JSON:
+		internal.JSONToBencoding(os.Stdin)
+	}
+
+	// transform parsed data into designated output type
 
 	switch {
-	case inputDataFormat == BENCODING && outputDataFormat == JSON:
-		if raw {
-			internal.BencodingToJSON(os.Stdin)
-		} else {
-			os.Exit(1)
-		}
-	case inputDataFormat == JSON && outputDataFormat == BENCODING:
-		if raw {
-			internal.JSONToBencoding(os.Stdin)
-		} else {
-			os.Exit(1)
-		}
 	case inputDataFormat == outputDataFormat:
-		// write contents of filled buffer to stdout
-		internal.FillBufferFromStdin(&buffer)
-		os.Stdout.WriteString(strings.TrimRight(buffer.String(), "\n") + "\n")
+		// noop, just write inputBuffer directly to output
+	case inputDataFormat == BENCODING && outputDataFormat == JSON:
+		// TODO
+	case inputDataFormat == JSON && outputDataFormat == BENCODING:
+		// TODO
 	}
+
 	fmt.Printf("Converting from '%v' to '%v'\n", args[0], args[1])
+	fmt.Println(result)
 }
 
 func init() {
-	rootCmd.Flags().BoolVarP(&raw, "raw", "r", false, "Directly parse from input to output without populating an intermediate data-structure.")
+	rootCmd.Flags().BoolVar(&stream, "stream", false, "Stream contents of input through parser")
 }
 
 func main() {
