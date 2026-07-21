@@ -13,9 +13,9 @@ type bencodingType int
 const (
 	bencodingInvalidType bencodingType = iota
 	bencodingByteStringType
-	bencodingIntegerType
+	bencodingInt64Type
 	bencodingListType
-	bencodingDictionaryType
+	bencodingDictType
 )
 
 type Bencoder interface {
@@ -25,9 +25,9 @@ type Bencoder interface {
 
 type (
 	bencodingByteString string
-	bencodingInteger    int64
+	bencodingInt64      int64
 	bencodingList       []Bencoder
-	bencodingDictionary map[bencodingByteString]Bencoder
+	bencodingDict       map[bencodingByteString]Bencoder
 )
 
 // -------------------------------------------------------------------------- //
@@ -40,13 +40,13 @@ func (b bencodingByteString) Type() bencodingType {
 	return bencodingByteStringType
 }
 
-// NewBencodingByteString attempts to create a new bencodingByteString instance from the provided buffer.
+// newBencodingByteString attempts to create a new bencodingByteString instance from the provided buffer.
 // Encoding: <string length encoded in base ten ASCII>:<string data>
 // (https://wiki.theory.org/BitTorrentSpecification#Byte_Strings)
 // examples:
 // [0], [:]
 // [1-9] [0-9], [:], [ASCII]
-func NewBencodingByteString(data []byte) (bencodingByteString, error) {
+func newBencodingByteString(data []byte) (bencodingByteString, error) {
 	// check the start of the ByteString is valid
 	switch {
 	case data[0] == '0' && data[1] == ':':
@@ -70,7 +70,7 @@ readByteStringLengthSegment:
 		case b == ':':
 			break readByteStringLengthSegment
 		default:
-			return bencodingByteString(""), fmt.Errorf("only digits are allowed in the length portion of a ByteString (%v)", string(data[:cursor]))
+			return bencodingByteString(""), fmt.Errorf("only digits are allowed in the length portion of a ByteString (%v)", string(data[:cursor+1]))
 		}
 		if data[cursor] != ':' && cursor == uint64(len(data)-1) {
 			return bencodingByteString(""), fmt.Errorf("exhaused input buffer but ByteString delimeter ':' never reached (%s)", string(data))
@@ -81,25 +81,65 @@ readByteStringLengthSegment:
 	lenData := string(data[:cursor])
 	strLen, err := strconv.ParseUint(lenData, 10, 64)
 	if err != nil {
-		return bencodingByteString(""), fmt.Errorf("could not parse '%s', invalid uint64 (%s)", lenData, string(data[:cursor]))
+		return bencodingByteString(""), fmt.Errorf("could not parse '%s', invalid uint64 (%s): %v", lenData, string(data[:cursor]), err)
 	}
 
 	// return token for Bencoding Byte String if sufficient data for indicated string length
-	availableData := uint64(len(data)) - (cursor + 1)
-	if strLen > availableData {
-		return bencodingByteString(""), fmt.Errorf("expecting more string data (%d) than is available (%d) in '%s'", strLen, availableData, string(data[cursor+1:cursor+availableData+1]))
+	if availableData := uint64(len(data)) - (cursor + 1); strLen > availableData {
+		err := fmt.Errorf(
+			"expecting more string data (%d) than is available (%d) in '%s'",
+			strLen, availableData, string(data[cursor+1:cursor+availableData+1]),
+		)
+		return bencodingByteString(""), err
 	}
 	return bencodingByteString(string(data[:cursor+strLen+1])), nil
 }
 
 // -------------------------------------------------------------------------- //
 
-func (b bencodingInteger) String() string {
+func (b bencodingInt64) String() string {
 	return fmt.Sprintf("i%de", b)
 }
 
-func (b bencodingInteger) Type() bencodingType {
-	return bencodingIntegerType
+func (b bencodingInt64) Type() bencodingType {
+	return bencodingInt64Type
+}
+
+func newBencodingInt64(data []byte) (bencodingInt64, error) {
+	// verify first character is int64 start delimiter
+	cursor := 0
+	if data[cursor] != 'i' {
+		return bencodingInt64(0), fmt.Errorf("first character of bencodingInt64 must be 'i' (%v)", string(data[:cursor]))
+	}
+	// verify initial character combos are valid
+	cursor++
+	switch {
+	case data[cursor] == '-' && (data[cursor+1] < '1' || data[cursor+1] > '9'):
+		return bencodingInt64(0), fmt.Errorf("only digits 1-9 can immediately follow a minus symbol (%v)", string(data[:cursor+2]))
+	case data[cursor] == '0' && data[cursor+1] == 'e':
+		return bencodingInt64(0), nil // empty bencodingInt64
+	case data[cursor] != '-' && (data[cursor] < '0' || data[cursor] > '9'):
+		return bencodingInt64(0), fmt.Errorf("only digits 0-9 or minus symbol can start a BencodingInt64Type (%v)", string(data[:cursor+1]))
+	}
+
+	// scan remainder of buffer
+	cursor++
+	for cursor < len(data) {
+		b := data[cursor]
+		switch {
+		case b == 'e':
+			vInt64, err := strconv.ParseInt(string(data[1:cursor]), 10, 64)
+			if err != nil {
+				return bencodingInt64(0), fmt.Errorf("could not parse %s into int64", string(data))
+			}
+			return bencodingInt64(vInt64), nil
+		case data[cursor] < '0' || data[cursor] > '9':
+			return bencodingInt64(0), fmt.Errorf("illegal character (%c) detected while parsing int64 bytes (%s)", b, string(data[:cursor+1]))
+		}
+		cursor++
+	}
+
+	return bencodingInt64(0), fmt.Errorf("exhuasted buffer while parsing as bencodingInt64 (%s)", string(data))
 }
 
 // -------------------------------------------------------------------------- //
@@ -132,9 +172,9 @@ func ParseIntoBencoding(data []byte) (Bencoder, error) {
 	prefix := data[0]
 	switch {
 	case prefix >= '0' && prefix <= '9':
-		return NewBencodingByteString(data)
+		return newBencodingByteString(data)
 	case prefix == 'i':
-		return nil, nil
+		return newBencodingInt64(data)
 	case prefix == 'l':
 		return nil, nil
 	case prefix == 'd':
@@ -142,44 +182,4 @@ func ParseIntoBencoding(data []byte) (Bencoder, error) {
 	default:
 		return nil, fmt.Errorf("'%c' does not map to the start of a valid bencodingType", prefix)
 	}
-}
-
-func SplitBencoding(data []byte, atEOF bool) (int, []byte, error) {
-	// is the first byte one of the valid starting ASCII characters?
-	if b := data[0]; (b < '0' || b > '9') && b != 'i' && b != 'l' && b != 'd' {
-		return 0, nil, fmt.Errorf("invalid Bencoding starting character: %c", b)
-	}
-
-	// pull data until delimiter for bencodingType reached or buffer is exhausted
-	cursor := 1
-	for cursor < len(data) {
-		switch b := data[cursor]; b {
-
-		// return token for Bencoding values: Int64, List, Dict
-		case 'e':
-			return cursor, data[:cursor], nil
-
-			// start parsing token as Bencoding Byte String
-		case ':':
-
-			// determine expected length of string data
-			lenData := string(data[:(cursor - 1)])
-			strLen, err := strconv.ParseUint(lenData, 10, 64)
-			if err != nil {
-				return 0, nil, fmt.Errorf("could not parse '%s', invalid uint64", lenData)
-			}
-
-			// return token for Bencoding Byte String if sufficient data for indicated string length
-			availableData := uint64(len(data) - cursor)
-			if strLen > uint64(len(data)-cursor) {
-				return 0, nil, fmt.Errorf("expecting more string data (%d) than is available (%d)", strLen, availableData)
-			}
-			return cursor, data[:(uint64(cursor) + strLen)], nil
-		default:
-			cursor++
-		}
-	}
-
-	// need more data
-	return cursor, nil, nil
 }
