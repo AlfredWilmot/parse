@@ -142,13 +142,13 @@ func newBencodingInt64(data []byte) ([]byte, error) {
 	cursor++
 	switch {
 	case data[cursor] == '-' && (data[cursor+1] < '1' || data[cursor+1] > '9'):
-		return data[:cursor], fmt.Errorf("only digits 1-9 can immediately follow a minus symbol (%v)", string(data[:cursor+2]))
+		return nil, fmt.Errorf("only digits 1-9 can immediately follow a minus symbol (%v)", string(data[:cursor+2]))
 	case data[cursor] == '0' && data[cursor+1] == 'e':
-		return data[:cursor], nil // empty bencodingInt64
+		return []byte("0"), nil // zero-value bencodingInt64
 	case data[cursor] == '0' && data[cursor+1] == '0':
-		return data[:cursor], fmt.Errorf("cannot have two leading '0' characters (%v)", string(data[:cursor+2]))
+		return nil, fmt.Errorf("cannot have two leading '0' characters (%v)", string(data[:cursor+2]))
 	case data[cursor] != '-' && (data[cursor] < '0' || data[cursor] > '9'):
-		return data[:cursor], fmt.Errorf("only digits 0-9 or minus symbol can start a BencodingInt64Type (%v)", string(data[:cursor+1]))
+		return nil, fmt.Errorf("only digits 0-9 or minus symbol can start a BencodingInt64Type (%v)", string(data[:cursor+1]))
 	}
 
 	// scan remainder of buffer
@@ -159,11 +159,11 @@ func newBencodingInt64(data []byte) ([]byte, error) {
 		case b == 'e':
 			_, err := strconv.ParseInt(string(data[1:cursor]), 10, 64)
 			if err != nil {
-				return data[1:cursor], fmt.Errorf("could not parse %s into int64", string(data))
+				return nil, fmt.Errorf("could not parse into int64 (%v)", string(data))
 			}
 			return data[1:cursor], nil
 		case data[cursor] < '0' || data[cursor] > '9':
-			return data[:cursor], fmt.Errorf("illegal character (%c) detected while parsing int64 bytes (%s)", b, string(data[:cursor+1]))
+			return nil, fmt.Errorf("illegal character (%c) detected while parsing int64 bytes (%s)", b, string(data[:cursor+1]))
 		}
 		cursor++
 	}

@@ -19,7 +19,27 @@ func TestParseBencodingByteString(t *testing.T) {
 	for _, c := range cases {
 		gotVal, _ := newBencodingByteString([]byte(c.in))
 		if string(gotVal) != string(c.want) {
-			t.Errorf("ParseIntoBencoding(%v) == (%v), want (%v), ", c.in, string(gotVal), string(c.want))
+			t.Errorf("newBencodingByteString(%v) == (%v), want (%v), ", c.in, string(gotVal), string(c.want))
+		}
+	}
+}
+
+func TestParseBencodingInt64(t *testing.T) {
+	cases := []struct {
+		in   string
+		want []byte
+	}{
+		{"i0e", []byte("0")},
+		{"i-1e", []byte("-1")},
+		{"a2e", nil},
+		{"i05-1e", nil},
+		{"i00e", nil},
+		{"ie", nil},
+	}
+	for _, c := range cases {
+		gotVal, _ := newBencodingInt64([]byte(c.in))
+		if string(gotVal) != string(c.want) {
+			t.Errorf("newBencodingInt64(%v) == (%v), want (%v), ", c.in, string(gotVal), string(c.want))
 		}
 	}
 }
