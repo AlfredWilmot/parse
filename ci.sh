@@ -26,9 +26,9 @@ case "$1" in
 	  CGO_ENABLED=0 go build -a -ldflags '-extldflags "-static"' .
     ;;
   test)
-    find . -iname "*_test.go" -print0 | xargs --null go test
+    go test -v ./...
     ;;
   *)
-    echo "Usage: ${0} [fmt|build]" 1>&2
+    echo "Usage: ${0} [fmt|build|test]" 1>&2
     ;;
 esac
