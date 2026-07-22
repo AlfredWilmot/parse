@@ -42,11 +42,11 @@ func runCmd(cmd *cobra.Command, args []string) {
 	inputBuffer = inputBuffer[:n]
 
 	// parse data into designated input type
-	var result internal.Bencoder
+	var result any
 	switch inputDataFormat {
 	case BENCODING:
 		var err error
-		result, err = internal.ParseIntoBencoding(inputBuffer)
+		result, err = internal.ParseBencoding(inputBuffer)
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)

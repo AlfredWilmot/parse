@@ -15,7 +15,7 @@ func TestParseBencoding(t *testing.T) {
 		{"3:fooo", "3:foo", nil},
 	}
 	for _, c := range cases {
-		gotVal, gotErr := ParseIntoBencoding([]byte(c.in))
+		gotVal, gotErr := ParseBencoding([]byte(c.in))
 		if gotVal.String() != c.want {
 			t.Errorf("ParseIntoBencoding(%v) == (%v, %v), want (%v, %v), ", c.in, gotVal.String(), gotErr, c.want, c.err)
 		}
