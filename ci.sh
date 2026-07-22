@@ -25,6 +25,9 @@ case "$1" in
 	# https://stackoverflow.com/a/61324538/22415851
 	  CGO_ENABLED=0 go build -a -ldflags '-extldflags "-static"' .
     ;;
+  test)
+    find . -iname "*_test.go" -print0 | xargs --null go test
+    ;;
   *)
     echo "Usage: ${0} [fmt|build]" 1>&2
     ;;
