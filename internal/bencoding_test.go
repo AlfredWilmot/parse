@@ -26,8 +26,8 @@ func TestParseBencodingByteString(t *testing.T) {
 
 func TestParseBencodingInt64(t *testing.T) {
 	cases := []struct {
-		in   string
-		want []byte
+		in        string
+		wantSlice []byte
 	}{
 		{"i0e", []byte("0")},
 		{"i-1e", []byte("-1")},
@@ -38,8 +38,8 @@ func TestParseBencodingInt64(t *testing.T) {
 	}
 	for _, c := range cases {
 		gotVal, _ := newBencodingInt64([]byte(c.in))
-		if string(gotVal) != string(c.want) {
-			t.Errorf("newBencodingInt64(%v) == (%v), want (%v), ", c.in, string(gotVal), string(c.want))
+		if string(gotVal) != string(c.wantSlice) {
+			t.Errorf("newBencodingInt64(%v) == (%v), want (%v), ", c.in, string(gotVal), string(c.wantSlice))
 		}
 	}
 }

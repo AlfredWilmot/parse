@@ -49,7 +49,7 @@ func (b BencodingToken) String() string {
 	return ""
 }
 
-// ParseBencoding parses the Bencoded data according to the detected token type.
+// ParseBencoding returns the next Token from the given data buffer.
 func ParseBencoding(data []byte) (BencodingToken, error) {
 	var dataSlice []byte
 	var dataType BencodingType // defaults to BencodingInvalidType
@@ -59,7 +59,8 @@ func ParseBencoding(data []byte) (BencodingToken, error) {
 		return BencodingToken{nil, BencodingInvalidType}, fmt.Errorf("%v: %v", ErrBencoding, string(data))
 	}
 
-	prefix := data[0]
+	head := 0
+	prefix := data[head]
 	switch {
 	case prefix >= '0' && prefix <= '9':
 		dataType = BencodingByteStringType
@@ -75,13 +76,9 @@ func ParseBencoding(data []byte) (BencodingToken, error) {
 	return BencodingToken{dataSlice, dataType}, err
 }
 
-// newBencodingByteString attempts to create a new bencodingByteString instance from the provided buffer.
+// newBencodingByteString attempts to parse data for a valid ByteString Token from the provided buffer.
 // Encoding: <string length encoded in base ten ASCII>:<string data>
 // (https://wiki.theory.org/BitTorrentSpecification#Byte_Strings)
-// examples:
-// [0], [:]
-// [1-9] [0-9], [:], [ASCII]
-// Returns (SliceOfParsedBytes, Error)
 func newBencodingByteString(data []byte) ([]byte, error) {
 	// check the start of the ByteString is valid
 	switch {
@@ -130,14 +127,17 @@ readByteStringLengthSegment:
 	return data[strLen-1 : cursor+strLen+1], nil
 }
 
-// -------------------------------------------------------------------------- //
-
+// newBencodingInt64 attempts to parse data for a valid Int64 Token from the provided buffer.
+// Encoding: i<integer encoded in base ten ASCII>e
+// (https://wiki.theory.org/BitTorrentSpecification#Integers)
 func newBencodingInt64(data []byte) ([]byte, error) {
-	// verify first character is int64 start delimiter
 	cursor := 0
+
+	// verify first character is int64 start delimiter
 	if data[cursor] != 'i' {
-		return data[:cursor], fmt.Errorf("first character of bencodingInt64 must be 'i' (%v)", string(data[:cursor]))
+		return nil, fmt.Errorf("first character of bencodingInt64 must be 'i' (%v)", string(data[:cursor]))
 	}
+
 	// verify initial character combos are valid
 	cursor++
 	switch {
@@ -145,8 +145,8 @@ func newBencodingInt64(data []byte) ([]byte, error) {
 		return nil, fmt.Errorf("only digits 1-9 can immediately follow a minus symbol (%v)", string(data[:cursor+2]))
 	case data[cursor] == '0' && data[cursor+1] == 'e':
 		return []byte("0"), nil // zero-value bencodingInt64
-	case data[cursor] == '0' && data[cursor+1] == '0':
-		return nil, fmt.Errorf("cannot have two leading '0' characters (%v)", string(data[:cursor+2]))
+	case data[cursor] == '0' && data[cursor+1] != 'e':
+		return nil, fmt.Errorf("cannot have a leading '0' that is not immediately terminated with an 'e' (%v)", string(data[:cursor+2]))
 	case data[cursor] != '-' && (data[cursor] < '0' || data[cursor] > '9'):
 		return nil, fmt.Errorf("only digits 0-9 or minus symbol can start a BencodingInt64Type (%v)", string(data[:cursor+1]))
 	}
@@ -167,6 +167,5 @@ func newBencodingInt64(data []byte) ([]byte, error) {
 		}
 		cursor++
 	}
-
 	return data[:cursor], fmt.Errorf("exhuasted buffer while parsing as bencodingInt64 (%s)", string(data))
 }
