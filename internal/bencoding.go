@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	ErrBencoding           = errors.New("invalid bencoding")
+	ErrBencoding           = errors.New("invalid bencoding token")
 	ErrBencodingByteString = errors.New("invalid bencodingByteStringType")
 	ErrBencodingInt64      = errors.New("invalid bencodingByteInt64")
 	ErrBencodingList       = errors.New("invalid bencodingList")
@@ -28,10 +28,20 @@ type ParsedBencoding interface {
 	BencodingToken | ~[]BencodingToken | ~map[*BencodingToken]BencodingToken
 }
 
+type Tokener interface {
+	Token() []byte
+	String() string
+}
+
 // BencodingToken represents a parsed token of bencoded data
 type BencodingToken struct {
-	data  []byte // slice encapsulating parsed token (e.g. foo | 3  | i-3ei3e | 3:fooi-3e3:bari3e)
-	label BencodingType
+	data          []byte // slice encapsulating parsed token (e.g. foo | 3  | i-3ei3e | 3:fooi-3e3:bari3e)
+	label         BencodingType
+	subTokenCount int // how many tokens are contained within this one (e.g entry in list, or k/v pairs in dict)
+}
+
+func (b BencodingToken) Token() []byte {
+	return b.data
 }
 
 // String dumps the entire BencodedToken with delimiters
@@ -49,82 +59,99 @@ func (b BencodingToken) String() string {
 	return ""
 }
 
-// ParseBencoding returns the next Token from the given data buffer.
-func ParseBencoding(data []byte) (BencodingToken, error) {
+// ParseBencoding returns a collection of BencodingTokens parsed from a buffer.
+func ParseBencoding(data []byte, maxTokens int) (chan Tokener, error) {
 	var dataSlice []byte
-	var dataType BencodingType // defaults to BencodingInvalidType
 	var err error
+	var head, tail uint64
+
+	tokenFeed := make(chan Tokener, maxTokens)
 
 	if len(data) < 2 {
-		return BencodingToken{nil, BencodingInvalidType}, fmt.Errorf("%v: %v", ErrBencoding, string(data))
+		return nil, fmt.Errorf("%v: %v", ErrBencoding, string(data))
 	}
 
-	head := 0
-	prefix := data[head]
-	switch {
-	case prefix >= '0' && prefix <= '9':
-		dataType = BencodingByteStringType
-		dataSlice, err = newBencodingByteString(data)
-	case prefix == 'i':
-		dataType = BencodingInt64Type
-		dataSlice, err = newBencodingInt64(data)
-	case prefix == 'l':
-		// TODO
-	case prefix == 'd':
-		// TODO
+	for head < uint64(len(data)) {
+		prefix := data[head]
+		switch {
+		case prefix >= '0' && prefix <= '9':
+			dataSlice, tail, err = newBencodingByteString(head, data)
+			if err != nil {
+				return nil, err
+			}
+			tokenFeed <- BencodingToken{dataSlice, BencodingByteStringType, 0}
+		case prefix == 'i':
+			dataSlice, err = newBencodingInt64(data)
+			if err != nil {
+				return nil, err
+			}
+			tokenFeed <- BencodingToken{dataSlice, BencodingInt64Type, 0}
+		case prefix == 'l':
+			// TODO
+		case prefix == 'd':
+			// TODO
+		default:
+			return tokenFeed, fmt.Errorf("%v: '%v'", ErrBencoding, string(data[head:tail+1]))
+		}
+		tail++
+		head = tail
 	}
-	return BencodingToken{dataSlice, dataType}, err
+	close(tokenFeed)
+	return tokenFeed, err
 }
 
 // newBencodingByteString attempts to parse data for a valid ByteString Token from the provided buffer.
 // Encoding: <string length encoded in base ten ASCII>:<string data>
 // (https://wiki.theory.org/BitTorrentSpecification#Byte_Strings)
-func newBencodingByteString(data []byte) ([]byte, error) {
+func newBencodingByteString(tail uint64, data []byte) ([]byte, uint64, error) {
 	// check the start of the ByteString is valid
+	head := tail
 	switch {
-	case data[0] == '0' && data[1] == ':':
-		return []byte(""), nil // 0-length ByteString represents an empty string
-	case data[0] >= '1' && data[0] <= '9':
+	case data[head] == '0' && data[head+1] == ':':
+		return []byte(""), (head + 1), nil // 0-length ByteString represents an empty string
+	case data[head] >= '1' && data[head] <= '9':
 		// noop (valid starting digits for non-empty strings)
-	case data[0] == '0' && data[1] != ':':
-		return nil, fmt.Errorf("non-empty ByteString with leading 0 not allowed")
+	case data[head] == '0' && data[head] != ':':
+		return nil, head, fmt.Errorf("non-empty ByteString with leading 0 not allowed")
 	default:
-		return nil, fmt.Errorf("only digits are allowed in the length portion of a ByteString (%v)", string(data[:1]))
+		return nil, head, fmt.Errorf("only digits are allowed in the length portion of a ByteString (%v)", string(data[head:tail+1]))
 	}
 
 	// ensure all characters up-to ':' delimiter are only digits
-	var cursor uint64 = 1
 readByteStringLengthSegment:
-	for {
-		char := data[cursor]
+	for tail < uint64(len(data)) {
+		tail++
 		switch {
-		case char >= '0' && char <= '9':
-			cursor++
-		case char == ':':
+		case data[tail] == ':':
 			break readByteStringLengthSegment
-		default:
-			return nil, fmt.Errorf("only digits are allowed in the length portion of a ByteString (%v)", string(data[:cursor+1]))
+		case data[tail] < '0' || data[tail] > '9':
+			return nil, tail, fmt.Errorf("only digits are allowed in the length portion of a ByteString (%v)", string(data[head:tail+1]))
 		}
-		if data[cursor] != ':' && cursor == uint64(len(data)-1) {
-			return nil, fmt.Errorf("exhaused input buffer but ByteString delimeter ':' never reached (%s)", string(data))
-		}
+	}
+	if data[tail] != ':' && tail == uint64(len(data))-1 {
+		return nil, tail, fmt.Errorf("exhaused input buffer but ByteString delimeter ':' never reached (%s)", string(data[head:tail+1]))
 	}
 
 	// determine expected length of string data
-	lenData := string(data[:cursor])
+	lenData := string(data[head:tail])
 	strLen, err := strconv.ParseUint(lenData, 10, 64)
 	if err != nil {
-		return nil, fmt.Errorf("invalid uint64 (%s): %v", lenData, err)
+		return nil, tail, fmt.Errorf("invalid uint64 (%s): %v", lenData, err)
 	}
+	// shift head to start of ASCII string data segment
+	head = tail + 1
 
 	// return token for Bencoding Byte String if sufficient data for indicated string length
-	if availableData := uint64(len(data)) - (cursor + 1); strLen > availableData {
-		return nil, fmt.Errorf(
+	if availableData := (uint64(len(data)) - (tail + 1)); strLen > availableData {
+		return nil, tail, fmt.Errorf(
 			"expecting more string data (%d) than is available (%d) in '%s'",
-			strLen, availableData, string(data[cursor+1:cursor+availableData+1]),
+			strLen, availableData, string(data[(tail+1):(tail+availableData+1)]),
 		)
 	}
-	return data[strLen-1 : cursor+strLen+1], nil
+	// shift tail to end of ASCII string data segment
+	tail += strLen
+	// return segment containing ASCII string data, and final tail position
+	return data[head : tail+1], tail, nil
 }
 
 // newBencodingInt64 attempts to parse data for a valid Int64 Token from the provided buffer.

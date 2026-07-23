@@ -17,7 +17,7 @@ func TestParseBencodingByteString(t *testing.T) {
 		{"d0h:foo", nil},
 	}
 	for _, c := range cases {
-		gotVal, _ := newBencodingByteString([]byte(c.in))
+		gotVal, _, _ := newBencodingByteString(0, []byte(c.in))
 		if string(gotVal) != string(c.want) {
 			t.Errorf("newBencodingByteString(%v) == (%v), want (%v), ", c.in, string(gotVal), string(c.want))
 		}

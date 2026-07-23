@@ -40,19 +40,20 @@ func runCmd(cmd *cobra.Command, args []string) {
 	inputBuffer := make([]byte, 1<<30) // 1GB
 	n, _ := os.Stdin.Read(inputBuffer)
 	inputBuffer = inputBuffer[:n]
+	fmt.Println("buffer-len:", len(inputBuffer))
 
 	// parse data into designated input type
-	var result any
+	var tokenFeed chan internal.Tokener
 	switch inputDataFormat {
 	case BENCODING:
 		var err error
-		result, err = internal.ParseBencoding(inputBuffer)
+		tokenFeed, err = internal.ParseBencoding(inputBuffer, 100)
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)
 		}
 	case JSON:
-		internal.JSONToBencoding(os.Stdin)
+		// TODO
 	}
 
 	// transform parsed data into designated output type
@@ -67,7 +68,9 @@ func runCmd(cmd *cobra.Command, args []string) {
 	}
 
 	fmt.Printf("Converting from '%v' to '%v'\n", args[0], args[1])
-	fmt.Println(result)
+	for token := range tokenFeed {
+		fmt.Println(token)
+	}
 }
 
 func init() {
