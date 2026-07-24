@@ -67,12 +67,12 @@ func ParseBencoding(data []byte, maxTokens int) (chan Tokener, error) {
 
 	tokenFeed := make(chan Tokener, maxTokens)
 
-	if len(data) < 2 {
-		return nil, fmt.Errorf("%v: %v", ErrBencoding, string(data))
-	}
-
 	for head < uint64(len(data)) {
+		if len(data[head:]) < 2 {
+			return nil, fmt.Errorf("%v: %v", ErrBencoding, string(data))
+		}
 		prefix := data[head]
+
 		switch {
 		case prefix >= '0' && prefix <= '9':
 			dataSlice, tail, err = newBencodingByteString(head, data)

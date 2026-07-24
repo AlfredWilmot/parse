@@ -5,6 +5,7 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 
 	"parse/internal"
@@ -14,8 +15,16 @@ import (
 
 // used for flags (see init() for details)
 var (
-	stream bool
+	tokenise bool
+	data     string
+	quiet    bool
 )
+
+func init() {
+	rootCmd.Flags().BoolVarP(&tokenise, "tokenise", "t", false, "Parse data into the tokens corresponding to the selected data-format")
+	rootCmd.Flags().StringVarP(&data, "data", "d", "", "Pass data directly")
+	rootCmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "Silence logs")
+}
 
 const (
 	BENCODING = "bencoding"
@@ -28,19 +37,46 @@ var rootCmd = &cobra.Command{
 	Long: `Transform from one data-format to another
 Valid formats: [bencoding|json]`,
 	Run:       runCmd,
-	Args:      cobra.MatchAll(cobra.ExactArgs(2), cobra.OnlyValidArgs),
+	Args:      cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs),
 	ValidArgs: []string{"bencoding", "json"},
 }
 
-func runCmd(cmd *cobra.Command, args []string) {
-	inputDataFormat := args[0]
-	outputDataFormat := args[1]
+const MaxBufferLen = 1 << 30 // 1GB
 
-	// TODO: handle errors when reading from input
-	inputBuffer := make([]byte, 1<<30) // 1GB
-	n, _ := os.Stdin.Read(inputBuffer)
-	inputBuffer = inputBuffer[:n]
-	fmt.Println("buffer-len:", len(inputBuffer))
+var ErrBufferLen = fmt.Errorf("exceeded MaxBufferLen %d", MaxBufferLen)
+
+func runCmd(cmd *cobra.Command, args []string) {
+	// parse cli flags
+	data, _ := cmd.Flags().GetString("data")
+	tokenise, _ := cmd.Flags().GetBool("tokenise")
+	quiet, _ := cmd.Flags().GetBool("quiet")
+
+	// configure logging
+	var logger *slog.Logger
+	if quiet {
+		logger = slog.New(slog.DiscardHandler)
+	} else {
+		logger = slog.New(slog.NewJSONHandler(os.Stderr, nil))
+	}
+	slog.SetDefault(logger)
+
+	// determine desired dataformat
+	inputDataFormat := args[0]
+
+	// TODO: handle errors when reading-in data
+	inputBuffer := make([]byte, MaxBufferLen)
+	if len(data) > 0 {
+		slog.Info("recieved fixed data", "flag", "--data", "content", data)
+		inputBuffer = []byte(data)
+		if len(data) > MaxBufferLen {
+			logger.Error(fmt.Sprintln(ErrBufferLen))
+			os.Exit(1)
+		}
+	} else {
+		slog.Info("streaming data", "source", "/dev/stdin")
+		n, _ := os.Stdin.Read(inputBuffer)
+		inputBuffer = inputBuffer[:n]
+	}
 
 	// parse data into designated input type
 	var tokenFeed chan internal.Tokener
@@ -56,25 +92,12 @@ func runCmd(cmd *cobra.Command, args []string) {
 		// TODO
 	}
 
-	// transform parsed data into designated output type
-
-	switch {
-	case inputDataFormat == outputDataFormat:
-		// noop, just write inputBuffer directly to output
-	case inputDataFormat == BENCODING && outputDataFormat == JSON:
-		// TODO
-	case inputDataFormat == JSON && outputDataFormat == BENCODING:
-		// TODO
+	if tokenise {
+		slog.Info("dumping tokens", "flag", "--tokenise")
+		for token := range tokenFeed {
+			fmt.Fprintln(os.Stdout, token)
+		}
 	}
-
-	fmt.Printf("Converting from '%v' to '%v'\n", args[0], args[1])
-	for token := range tokenFeed {
-		fmt.Println(token)
-	}
-}
-
-func init() {
-	rootCmd.Flags().BoolVar(&stream, "stream", false, "Stream contents of input through parser")
 }
 
 func main() {
