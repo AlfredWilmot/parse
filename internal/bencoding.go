@@ -81,7 +81,7 @@ func ParseBencoding(data []byte, maxTokens int) (chan Tokener, error) {
 			}
 			tokenFeed <- BencodingToken{dataSlice, BencodingByteStringType, 0}
 		case prefix == 'i':
-			dataSlice, err = newBencodingInt64(data)
+			dataSlice, tail, err = newBencodingInt64(head, data)
 			if err != nil {
 				return nil, err
 			}
@@ -157,42 +157,42 @@ readByteStringLengthSegment:
 // newBencodingInt64 attempts to parse data for a valid Int64 Token from the provided buffer.
 // Encoding: i<integer encoded in base ten ASCII>e
 // (https://wiki.theory.org/BitTorrentSpecification#Integers)
-func newBencodingInt64(data []byte) ([]byte, error) {
-	cursor := 0
+func newBencodingInt64(tail uint64, data []byte) ([]byte, uint64, error) {
+	head := tail
 
 	// verify first character is int64 start delimiter
-	if data[cursor] != 'i' {
-		return nil, fmt.Errorf("first character of bencodingInt64 must be 'i' (%v)", string(data[:cursor]))
+	if data[head] != 'i' {
+		return nil, head, fmt.Errorf("first character of bencodingInt64 must be 'i' (%v)", string(data[head:tail+1]))
 	}
 
 	// verify initial character combos are valid
-	cursor++
+	tail++
 	switch {
-	case data[cursor] == '-' && (data[cursor+1] < '1' || data[cursor+1] > '9'):
-		return nil, fmt.Errorf("only digits 1-9 can immediately follow a minus symbol (%v)", string(data[:cursor+2]))
-	case data[cursor] == '0' && data[cursor+1] == 'e':
-		return []byte("0"), nil // zero-value bencodingInt64
-	case data[cursor] == '0' && data[cursor+1] != 'e':
-		return nil, fmt.Errorf("cannot have a leading '0' that is not immediately terminated with an 'e' (%v)", string(data[:cursor+2]))
-	case data[cursor] != '-' && (data[cursor] < '0' || data[cursor] > '9'):
-		return nil, fmt.Errorf("only digits 0-9 or minus symbol can start a BencodingInt64Type (%v)", string(data[:cursor+1]))
+	case data[tail] == '-' && (data[tail+1] < '1' || data[tail+1] > '9'):
+		return nil, tail, fmt.Errorf("only digits 1-9 can immediately follow a minus symbol (%v)", string(data[head:tail+2]))
+	case data[tail] == '0' && data[tail+1] == 'e':
+		return []byte("0"), tail + 1, nil // zero-value bencodingInt64
+	case data[tail] == '0' && data[tail+1] != 'e':
+		return nil, tail + 1, fmt.Errorf("cannot have a leading '0' that is not immediately terminated with an 'e' (%v)", string(data[head:tail+2]))
+	case data[tail] != '-' && (data[tail] < '0' || data[tail] > '9'):
+		return nil, tail, fmt.Errorf("only digits 0-9 or minus symbol can start a BencodingInt64Type (%v)", string(data[head:tail+1]))
 	}
 
 	// scan remainder of buffer
-	cursor++
-	for cursor < len(data) {
-		b := data[cursor]
+	tail++
+	for tail < uint64(len(data)) {
+		b := data[tail]
 		switch {
 		case b == 'e':
-			_, err := strconv.ParseInt(string(data[1:cursor]), 10, 64)
+			_, err := strconv.ParseInt(string(data[head+1:tail]), 10, 64)
 			if err != nil {
-				return nil, fmt.Errorf("could not parse into int64 (%v)", string(data))
+				return nil, tail, fmt.Errorf("could not parse into int64 (%v)", string(data[head+1:tail]))
 			}
-			return data[1:cursor], nil
-		case data[cursor] < '0' || data[cursor] > '9':
-			return nil, fmt.Errorf("illegal character (%c) detected while parsing int64 bytes (%s)", b, string(data[:cursor+1]))
+			return data[head+1 : tail], tail, nil
+		case data[tail] < '0' || data[tail] > '9':
+			return nil, tail, fmt.Errorf("illegal character (%c) detected while parsing int64 bytes (%s)", b, string(data[head:tail+1]))
 		}
-		cursor++
+		tail++
 	}
-	return data[:cursor], fmt.Errorf("exhuasted buffer while parsing as bencodingInt64 (%s)", string(data))
+	return data[head : tail+1], tail, fmt.Errorf("exhuasted buffer while parsing as bencodingInt64 (%s)", string(data[head:tail+1]))
 }
