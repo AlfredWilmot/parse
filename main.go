@@ -41,7 +41,10 @@ Valid formats: [bencoding|json]`,
 	ValidArgs: []string{"bencoding", "json"},
 }
 
-const MaxBufferLen = 1 << 30 // 1GB
+const (
+	MaxBufferLen  = 1 << 30 // 1GB
+	MaxTokenCount = 100
+)
 
 var ErrBufferLen = fmt.Errorf("exceeded MaxBufferLen %d", MaxBufferLen)
 
@@ -78,12 +81,13 @@ func runCmd(cmd *cobra.Command, args []string) {
 		inputBuffer = inputBuffer[:n]
 	}
 
+	var err error
+	var token internal.Tokener
+
 	// parse data into designated input type
-	var tokenFeed chan internal.Tokener
 	switch inputDataFormat {
 	case BENCODING:
-		var err error
-		tokenFeed, err = internal.ParseBencoding(inputBuffer, 100)
+		token, err = internal.ParseBencoding(inputBuffer)
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)
@@ -94,9 +98,7 @@ func runCmd(cmd *cobra.Command, args []string) {
 
 	if tokenise {
 		slog.Info("dumping tokens", "flag", "--tokenise")
-		for token := range tokenFeed {
-			fmt.Fprintln(os.Stdout, token)
-		}
+		fmt.Fprintln(os.Stdout, string(token.TokenData()))
 	}
 }
 
