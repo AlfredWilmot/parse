@@ -69,7 +69,7 @@ func runCmd(cmd *cobra.Command, args []string) {
 	// TODO: handle errors when reading-in data
 	inputBuffer := make([]byte, MaxBufferLen)
 	if len(data) > 0 {
-		slog.Info("recieved fixed data", "flag", "--data", "content", data)
+		slog.Debug("recieved fixed data", "flag", "--data", "content", data)
 		inputBuffer = []byte(data)
 		if len(data) > MaxBufferLen {
 			logger.Error(fmt.Sprintln(ErrBufferLen))
@@ -97,7 +97,7 @@ func runCmd(cmd *cobra.Command, args []string) {
 	}
 
 	if tokenise {
-		slog.Info("dumping tokens", "flag", "--tokenise")
+		slog.Debug("dumping tokens", "flag", "--tokenise")
 		fmt.Fprintln(os.Stdout, string(token.TokenData()))
 	}
 }

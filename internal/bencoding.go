@@ -26,6 +26,19 @@ const (
 	BencodingDictType
 )
 
+// TokenType helps the parser perform the appropriate data-format transformation
+// for different data-structures while streaming data.
+type TokenType int
+
+const (
+	TokenSingleItem TokenType = iota
+	TokenKeyValue
+	TokenListStart
+	TokenListEnd
+	TokenDictStart
+	TokenDictEnd
+)
+
 type Tokener interface {
 	TokenData() []byte
 	ParsedData() []byte
@@ -85,19 +98,18 @@ func ParseBencoding(data []byte) (BencodingToken, error) {
 
 		for tail < len(data) {
 
-			// empty list
 			if data[tail+1] == 'e' {
 				token.tokenData = data[:tail+2]
-				slog.Info("detected empty BencodingList", "token", token.String())
+				slog.Info("detected BencodingList", "token", token.String())
 				break
 			}
 
 			// parse next list element
-			sub_token, err := ParseBencoding(data[tail+1 : len(data)-1])
+			subToken, err := ParseBencoding(data[tail+1 : len(data)-1])
 			if err != nil {
 				return token, err
 			}
-			tail += len(sub_token.TokenData())
+			tail += len(subToken.TokenData())
 		}
 
 	case data[0] == 'd':
@@ -124,7 +136,7 @@ func newBencodingByteString(data []byte) (BencodingToken, error) {
 	switch {
 	case data[0] == '0' && data[1] == ':':
 		// 0-length ByteString represents an empty string
-		return BencodingToken{data[0:1], data[0:2], BencodingByteStringType}, nil
+		return BencodingToken{[]byte(""), data[0:2], BencodingByteStringType}, nil
 	case data[0] >= '1' && data[0] <= '9':
 		// noop (valid starting digits for non-empty strings)
 	case data[0] == '0' && data[0] != ':':
@@ -189,7 +201,7 @@ func newBencodingInt64(data []byte) (BencodingToken, error) {
 	case data[tail] == '-' && (data[tail+1] < '1' || data[tail+1] > '9'):
 		return BencodingToken{}, fmt.Errorf("only digits 1-9 can immediately follow a minus symbol (%v)", string(data[:tail+2]))
 	case data[tail] == '0' && data[tail+1] == 'e':
-		return BencodingToken{nil, data[:tail+2], BencodingInt64Type}, nil // zero-value bencodingInt64
+		return BencodingToken{[]byte{data[tail]}, data[:tail+2], BencodingInt64Type}, nil // zero-value bencodingInt64
 	case data[tail] == '0' && data[tail+1] != 'e':
 		return BencodingToken{}, fmt.Errorf("cannot have a leading '0' that is not immediately terminated with an 'e' (%v)", string(data[:tail+2]))
 	case data[tail] != '-' && (data[tail] < '0' || data[tail] > '9'):

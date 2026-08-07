@@ -2,7 +2,7 @@
 Package core contains code for the InterMediateDataStructure.
 NOTE: these are unfinished experimental components, expect code-duplication.
 */
-package core
+package internal
 
 type InBetweenerType int
 
