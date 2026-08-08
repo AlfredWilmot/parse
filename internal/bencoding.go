@@ -201,7 +201,7 @@ func newBencodingInt64(data []byte) (BencodingToken, error) {
 	case data[tail] == '-' && (data[tail+1] < '1' || data[tail+1] > '9'):
 		return BencodingToken{}, fmt.Errorf("only digits 1-9 can immediately follow a minus symbol (%v)", string(data[:tail+2]))
 	case data[tail] == '0' && data[tail+1] == 'e':
-		return BencodingToken{[]byte{data[tail]}, data[:tail+2], BencodingInt64Type}, nil // zero-value bencodingInt64
+		return BencodingToken{data[tail : tail+1], data[:tail+2], BencodingInt64Type}, nil // zero-value bencodingInt64
 	case data[tail] == '0' && data[tail+1] != 'e':
 		return BencodingToken{}, fmt.Errorf("cannot have a leading '0' that is not immediately terminated with an 'e' (%v)", string(data[:tail+2]))
 	case data[tail] != '-' && (data[tail] < '0' || data[tail] > '9'):
