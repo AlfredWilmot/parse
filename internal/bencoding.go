@@ -148,13 +148,12 @@ func newBencodingByteString(data []byte) (BencodingToken, error) {
 	// ensure all characters up-to ':' delimiter are only digits
 	var head uint64
 	var tail uint64
-readByteStringLengthSegment:
 	for tail < uint64(len(data)) {
 		tail++
-		switch {
-		case data[tail] == ':':
-			break readByteStringLengthSegment
-		case data[tail] < '0' || data[tail] > '9':
+		if data[tail] == ':' {
+			break
+		}
+		if data[tail] < '0' || data[tail] > '9' {
 			return BencodingToken{}, fmt.Errorf("only digits are allowed in the length portion of a ByteString (%v)", string(data[head:tail+1]))
 		}
 	}
