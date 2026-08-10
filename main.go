@@ -81,24 +81,30 @@ func runCmd(cmd *cobra.Command, args []string) {
 		inputBuffer = inputBuffer[:n]
 	}
 
+	ch := make(chan internal.BencodingToken)
 	var err error
-	var token internal.Tokener
 
 	// parse data into designated input type
 	switch inputDataFormat {
 	case BENCODING:
-		token, err = internal.ParseBencoding(inputBuffer)
-		if err != nil {
-			fmt.Println(err)
-			os.Exit(1)
-		}
+		go func() {
+			defer close(ch)
+			_, err = internal.ParseBencoding(0, inputBuffer, ch)
+			if err != nil {
+				fmt.Println(err)
+				os.Exit(1)
+			}
+		}()
+
 	case JSON:
 		// TODO
 	}
 
 	if tokenise {
 		slog.Debug("dumping tokens", "flag", "--tokenise")
-		fmt.Fprintln(os.Stdout, string(token.TokenData()))
+		for v := range ch {
+			fmt.Fprintln(os.Stdout, "(", v.String(), ")", v.Label)
+		}
 	}
 }
 
