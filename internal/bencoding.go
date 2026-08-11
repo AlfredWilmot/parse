@@ -13,7 +13,9 @@ var (
 	ErrBencodingInt64         = errors.New("invalid bencodingByteInt64")
 	ErrBencodingList          = errors.New("invalid bencodingList")
 	ErrBencodingDict          = errors.New("invalid bencodingDict")
-	ErrBencodingMissingToken  = errors.New("missing expected bencoding token")
+	ErrBencodingMissingToken  = errors.New("missing bencoding token")
+	ErrBencodingKeyNoValue    = errors.New("key missing corresponding value")
+	ErrBencodingKeyInvalid    = errors.New("key must be a BencodingASCIIString")
 )
 
 type BencodingType int
@@ -102,22 +104,64 @@ func ParseBencoding(head int, data []byte, ch chan BencodingToken) (int, error) 
 		}
 
 		if !listClosed {
-			return tail, fmt.Errorf("%v (%v): '%v'", ErrBencodingMissingToken, BencodingListEnd, string(data[head:tail+1]))
+			return tail, fmt.Errorf("%v; %v (%v): '%v'", ErrBencodingList, ErrBencodingMissingToken, BencodingListEnd, string(data[head:tail+1]))
 		}
 
 		// todo
 	case data[head] == 'd':
 		ch <- BencodingToken{data[head : head+1], BencodingDictStart}
-		tail := head
+		var dictClosed bool = false
+
+		tail = head
 		tail++
 
 		// empty dict
 		if data[tail] == 'e' {
 			ch <- BencodingToken{data[head : tail+1], BencodingDictEnd}
+			return tail, nil
 		}
+
+		for tail < len(data) {
+
+			if data[tail] == 'e' {
+				ch <- BencodingToken{data[head : tail+1], BencodingDictEnd}
+				dictClosed = true
+				break
+			}
+
+			// key token must be BencodingASCIIString
+			if data[tail] < '0' || data[tail] > '9' {
+				return tail, fmt.Errorf("%v: '%v'", ErrBencodingKeyInvalid, string(data[head:tail+1]))
+			}
+			// parse key token
+			tail, err = ParseBencoding(tail, data, ch)
+			if err != nil {
+				return tail, err
+			}
+			tail++
+
+			// value token must exist for each key token
+			if tail >= len(data) {
+				return tail, fmt.Errorf("%v; %v : '%v'", ErrBencodingDict, ErrBencodingKeyNoValue, string(data[head:]))
+			}
+
+			// parse value token
+			tail, err = ParseBencoding(tail, data, ch)
+			if err != nil {
+				return tail, err
+			}
+			tail++
+
+		}
+
+		if !dictClosed {
+			return tail, fmt.Errorf("%v; %v (%v): '%v'", ErrBencodingDict, ErrBencodingMissingToken, BencodingDictEnd, string(data[head:tail+1]))
+		}
+
 	default:
 		return tail, fmt.Errorf("%v: '%v'", ErrBencoding, string(data[head:tail+1]))
 	}
+
 	return tail, err
 }
 
