@@ -7,26 +7,29 @@ import (
 )
 
 var (
-	ErrBencoding              = errors.New("invalid bencoding token")
-	ErrBencodingNotListOrDict = errors.New("invalid bencoding, must be BencodingList or BencodingDict")
-	ErrBencodingByteString    = errors.New("invalid bencodingByteStringType")
-	ErrBencodingInt64         = errors.New("invalid bencodingByteInt64")
-	ErrBencodingList          = errors.New("invalid bencodingList")
-	ErrBencodingDict          = errors.New("invalid bencodingDict")
-	ErrBencodingMissingToken  = errors.New("missing bencoding token")
-	ErrBencodingKeyNoValue    = errors.New("key missing corresponding value")
-	ErrBencodingKeyInvalid    = errors.New("key must be a BencodingASCIIString")
+	ErrBencoding             = errors.New("invalid BencodingToken")
+	ErrBencodingByteString   = errors.New("invalid BencodingASCIIString")
+	ErrBencodingInt64        = errors.New("invalid BencodingInt64")
+	ErrBencodingList         = errors.New("invalid BencodingList")
+	ErrBencodingDict         = errors.New("invalid BencodingDict")
+	ErrBencodingMissingToken = errors.New("missing BencodingToken")
+	ErrBencodingKeyNoValue   = errors.New("key missing corresponding value")
+	ErrBencodingKeyInvalid   = errors.New("key must be a BencodingASCIIString")
 )
 
 type BencodingType int
 
 const (
-	BencodingASCIIString BencodingType = iota
+	BencodingNull BencodingType = iota
+	BencodingASCIIString
 	BencodingInt64
 	BencodingListStart
 	BencodingListEnd
 	BencodingDictStart
 	BencodingDictEnd
+	BencodingDictKey
+	BencodingDictVal
+	BencodingListItem
 	BencodingPartial
 )
 
@@ -40,8 +43,14 @@ func (e BencodingType) String() string {
 		return "BencodingListStart"
 	case BencodingListEnd:
 		return "BencodingListEnd"
+	case BencodingListItem:
+		return "BencodingListItem"
 	case BencodingDictStart:
 		return "BencodingDictStart"
+	case BencodingDictKey:
+		return "BencodingDictKey"
+	case BencodingDictVal:
+		return "BencodingDictVal"
 	case BencodingDictEnd:
 		return "BencodingDictEnd"
 	case BencodingPartial:
@@ -52,13 +61,13 @@ func (e BencodingType) String() string {
 }
 
 type BencodingToken struct {
-	data []byte
+	Data []byte
 	// index int
 	Label BencodingType
 }
 
 func (obj BencodingToken) String() string {
-	return string(obj.data)
+	return string(obj.Data)
 }
 
 // ParseBencoding returns a collection of BencodingTokens parsed from a buffer.
@@ -96,6 +105,7 @@ func ParseBencoding(head int, data []byte, ch chan BencodingToken) (int, error) 
 			}
 
 			// parse next list element
+			ch <- BencodingToken{nil, BencodingListItem}
 			tail, err = ParseBencoding(tail, data, ch)
 			if err != nil {
 				return tail, err
@@ -107,7 +117,6 @@ func ParseBencoding(head int, data []byte, ch chan BencodingToken) (int, error) 
 			return tail, fmt.Errorf("%v; %v (%v): '%v'", ErrBencodingList, ErrBencodingMissingToken, BencodingListEnd, string(data[head:tail+1]))
 		}
 
-		// todo
 	case data[head] == 'd':
 		ch <- BencodingToken{data[head : head+1], BencodingDictStart}
 		var dictClosed bool = false
@@ -134,6 +143,7 @@ func ParseBencoding(head int, data []byte, ch chan BencodingToken) (int, error) 
 				return tail, fmt.Errorf("%v: '%v'", ErrBencodingKeyInvalid, string(data[head:tail+1]))
 			}
 			// parse key token
+			ch <- BencodingToken{nil, BencodingDictKey}
 			tail, err = ParseBencoding(tail, data, ch)
 			if err != nil {
 				return tail, err
@@ -146,6 +156,7 @@ func ParseBencoding(head int, data []byte, ch chan BencodingToken) (int, error) 
 			}
 
 			// parse value token
+			ch <- BencodingToken{nil, BencodingDictVal}
 			tail, err = ParseBencoding(tail, data, ch)
 			if err != nil {
 				return tail, err
@@ -228,6 +239,23 @@ func newBencodingByteString(head int, data []byte, ch chan BencodingToken) (int,
 	return tail, nil
 }
 
+// BencodingASCIIStringIntoString tries to return the string
+// equivalent of the data in the provided buffer.
+func BencodingASCIIStringIntoString(data []byte) (string, error) {
+	for idx, c := range data {
+		if c == ':' {
+			strLen, err := strconv.ParseUint(string(data[:idx]), 10, 64)
+			if err != nil {
+				return "", err
+			}
+			if strLen+uint64(idx) < uint64(len(data)) {
+				return string(data[idx+1:]), nil
+			}
+		}
+	}
+	return "", fmt.Errorf("missing ':' delimiter")
+}
+
 // newBencodingInt64 attempts to parse data for a valid Int64 Token from the provided buffer.
 // Encoding: i<integer encoded in base ten ASCII>e
 // (https://wiki.theory.org/BitTorrentSpecification#Integers)
@@ -274,4 +302,20 @@ func newBencodingInt64(head int, data []byte, ch chan BencodingToken) (int, erro
 	}
 	ch <- BencodingToken{data[head : tail+1], BencodingPartial}
 	return tail, fmt.Errorf("exhuasted buffer while parsing as bencodingInt64 (%s)", string(data[:tail+1]))
+}
+
+func BencodingInt64IntoInt64(data []byte) (int64, error) {
+	if data[0] != 'i' {
+		return 0, fmt.Errorf("%v: must start with 'i' delimiter (received: '%v')", ErrBencodingInt64, data[0])
+	}
+	for idx, c := range data[1:] {
+		if c == 'e' {
+			result, err := strconv.ParseInt(string(data[1:idx+1]), 10, 64)
+			if err != nil {
+				return 0, fmt.Errorf("%v: %v", ErrBencodingInt64, err)
+			}
+			return result, nil
+		}
+	}
+	return 0, fmt.Errorf("%v: missing 'e' delimiter", ErrBencodingInt64)
 }

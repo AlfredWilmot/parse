@@ -84,7 +84,7 @@ func runCmd(cmd *cobra.Command, args []string) {
 	ch := make(chan internal.BencodingToken)
 	var err error
 
-	// parse data into designated input type
+	// parse data from designated input type
 	switch inputDataFormat {
 	case BENCODING:
 		go func() {
@@ -100,12 +100,61 @@ func runCmd(cmd *cobra.Command, args []string) {
 		// TODO
 	}
 
-	if tokenise {
-		slog.Debug("dumping tokens", "flag", "--tokenise")
-		for v := range ch {
-			fmt.Fprintln(os.Stdout, "(", v.String(), ")", v.Label)
+	// used to handle qualifier for the current label
+	prevLabel := internal.BencodingNull
+
+	for v := range ch {
+
+		if tokenise {
+			fmt.Fprintf(os.Stderr, "%v", v.Label)
+			if v.Data != nil {
+				fmt.Fprintf(os.Stderr, " --> (%s)\n", v)
+			} else {
+				fmt.Fprint(os.Stderr, "\n")
+			}
 		}
+
+		switch v.Label {
+		case internal.BencodingDictStart:
+			fmt.Print("{")
+		case internal.BencodingDictEnd:
+			fmt.Print("}")
+		case internal.BencodingListStart:
+			fmt.Print("[")
+		case internal.BencodingListEnd:
+			fmt.Print("]")
+		case internal.BencodingInt64:
+			result, err := internal.BencodingInt64IntoInt64(v.Data)
+			if err != nil {
+				fmt.Println(err)
+				os.Exit(1)
+			}
+			fmt.Printf("%d", result)
+
+		case internal.BencodingASCIIString:
+			result, err := internal.BencodingASCIIStringIntoString(v.Data)
+			if err != nil {
+				fmt.Println(err)
+				os.Exit(1)
+			}
+			fmt.Printf("\"%s\"", result)
+			if prevLabel == internal.BencodingDictKey {
+				fmt.Printf(": ")
+			}
+		case internal.BencodingDictKey:
+			if prevLabel != internal.BencodingDictStart {
+				fmt.Print(", ")
+			}
+		case internal.BencodingListItem:
+			if prevLabel != internal.BencodingListStart {
+				fmt.Print(", ")
+			}
+
+		}
+
+		prevLabel = v.Label
 	}
+	fmt.Print("\n")
 }
 
 func main() {
