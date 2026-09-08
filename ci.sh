@@ -16,16 +16,19 @@ done
 # ---------------------------------------------------------------------------- #
 case "$1" in
   fmt)
+    set -x
 	  go mod tidy
     gofumpt -w .
     ;;
 
   build)
+    set -x
   # Build the application into a static binary
 	# https://stackoverflow.com/a/61324538/22415851
 	  CGO_ENABLED=0 go build -a -ldflags '-extldflags "-static"' .
     ;;
   test)
+    set -x
     go test -v ./...
     ;;
   *)
