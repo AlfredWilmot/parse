@@ -228,7 +228,7 @@ func newBencodingByteString(head int, data []byte, ch chan BencodingToken) (int,
 	if availableData := (uint64(len(data)) - uint64(tail)); strLen > availableData {
 		return tail, fmt.Errorf(
 			"expecting more string data (%d) than is available (%d) in '%s'",
-			strLen, availableData, string(data[tail:(uint64(tail)+availableData+1)]),
+			strLen, availableData, string(data[tail:(uint64(tail)+availableData)]),
 		)
 	}
 	// shift tail to end of ASCII string data segment
@@ -305,6 +305,9 @@ func newBencodingInt64(head int, data []byte, ch chan BencodingToken) (int, erro
 }
 
 func BencodingInt64IntoInt64(data []byte) (int64, error) {
+	if len(data) == 0 {
+		return 0, fmt.Errorf("%v: buffer is empty", ErrBencodingInt64)
+	}
 	if data[0] != 'i' {
 		return 0, fmt.Errorf("%v: must start with 'i' delimiter (received: '%v')", ErrBencodingInt64, data[0])
 	}
